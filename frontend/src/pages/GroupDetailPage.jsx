@@ -11,6 +11,33 @@ const CAT_ICONS = {
   entertainment: '🎬', utilities: '⚡', shopping: '🛍️', other: '📦',
 };
 
+const computeDebts = (balances, members) => {
+  const creds = [];
+  const pool = [];
+
+  members.forEach((m) => {
+    const bal = balances[m._id] || 0;
+    if (bal > 0.01) creds.push({ member: m, amount: bal });
+    else if (bal < -0.01) pool.push({ member: m, amount: Math.abs(bal) });
+  });
+
+  const debts = [];
+  let ci = 0;
+  let di = 0;
+  while (ci < creds.length && di < pool.length) {
+    const amount = Math.min(creds[ci].amount, pool[di].amount);
+    if (amount > 0.01) {
+      debts.push({ from: pool[di].member, to: creds[ci].member, amount: parseFloat(amount.toFixed(2)) });
+    }
+    creds[ci].amount -= amount;
+    pool[di].amount -= amount;
+    if (creds[ci].amount < 0.01) ci++;
+    if (pool[di].amount < 0.01) di++;
+  }
+
+  return debts;
+};
+
 export default function GroupDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -26,15 +53,9 @@ export default function GroupDetailPage() {
   const [error, setError] = useState('');
 
   const [showExpenseForm, setShowExpenseForm] = useState(false);
-  const [expenseForm, setExpenseForm] = useState({
-    description: '', amount: '', category: 'other', date: '', participants: [],
-  });
+  const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', category: 'other', date: '' });
   const [expenseError, setExpenseError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  const [showSettleForm, setShowSettleForm] = useState(false);
-  const [settleForm, setSettleForm] = useState({ toUser: '', amount: '' });
-  const [settleError, setSettleError] = useState('');
 
   const fetchAll = async () => {
     try {
@@ -48,10 +69,6 @@ export default function GroupDetailPage() {
       setExpenses(eRes.data);
       setSettlements(sRes.data);
       setBalances(bRes.data);
-      setExpenseForm((f) => ({
-        ...f,
-        participants: gRes.data.members.map((m) => ({ user: m._id, share: 0 })),
-      }));
     } catch {
       setError('Failed to load group data');
     } finally {
@@ -61,30 +78,20 @@ export default function GroupDetailPage() {
 
   useEffect(() => { fetchAll(); }, [id]);
 
-  const splitEvenly = () => {
-    const amt = parseFloat(expenseForm.amount) || 0;
-    const count = expenseForm.participants.length;
-    const share = count > 0 ? parseFloat((amt / count).toFixed(2)) : 0;
-    setExpenseForm((f) => ({ ...f, participants: f.participants.map((p) => ({ ...p, share })) }));
-  };
-
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
     setExpenseError('');
     setSubmitting(true);
     try {
-      const payload = {
+      const { data: newExpense } = await expenseService.create(id, {
         description: expenseForm.description,
         amount: parseFloat(expenseForm.amount),
         category: expenseForm.category,
         date: expenseForm.date || undefined,
-        participants: expenseForm.participants
-          .filter((p) => p.share > 0)
-          .map((p) => ({ user: p.user, share: parseFloat(p.share) })),
-      };
-      const { data: newExpense } = await expenseService.create(id, payload);
+      });
       setExpenses((prev) => [newExpense, ...prev]);
       setShowExpenseForm(false);
+      setExpenseForm({ description: '', amount: '', category: 'other', date: '' });
       toast.success('Expense added!');
       const { data: newBalances } = await expenseService.getBalances(id);
       setBalances(newBalances);
@@ -95,20 +102,19 @@ export default function GroupDetailPage() {
     }
   };
 
-  const handleSettle = async (e) => {
-    e.preventDefault();
-    setSettleError('');
+  const handleIPaid = async (debt) => {
     setSubmitting(true);
     try {
-      const { data: newSettlement } = await settlementService.create(id, { toUser: settleForm.toUser, amount: parseFloat(settleForm.amount) });
+      const { data: newSettlement } = await settlementService.create(id, {
+        toUser: debt.to._id,
+        amount: debt.amount,
+      });
       setSettlements((prev) => [newSettlement, ...prev]);
-      setShowSettleForm(false);
-      setSettleForm({ toUser: '', amount: '' });
-      toast.success('Settlement recorded!');
+      toast.success(`Payment of ${formatCurrency(debt.amount)} to ${debt.to.name} recorded!`);
       const { data: newBalances } = await expenseService.getBalances(id);
       setBalances(newBalances);
     } catch (err) {
-      setSettleError(err.response?.data?.message || 'Failed to record settlement');
+      toast.error(err.response?.data?.message || 'Failed to record payment');
     } finally {
       setSubmitting(false);
     }
@@ -119,8 +125,8 @@ export default function GroupDetailPage() {
     try {
       await expenseService.delete(id, expId);
       setExpenses(expenses.filter((e) => e._id !== expId));
-      const bRes = await expenseService.getBalances(id);
-      setBalances(bRes.data);
+      const { data: newBalances } = await expenseService.getBalances(id);
+      setBalances(newBalances);
       toast.success('Expense deleted');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to delete expense');
@@ -134,8 +140,9 @@ export default function GroupDetailPage() {
     </div>
   );
 
-  const otherMembers = group.members.filter((m) => m._id !== user._id);
   const myBalance = balances[user._id] || 0;
+  const debts = computeDebts(balances, group.members);
+  const myDebtCount = debts.filter((d) => d.from._id === user._id).length;
 
   return (
     <div className="page-container">
@@ -154,10 +161,9 @@ export default function GroupDetailPage() {
 
       {/* Group Header */}
       <div style={{ marginBottom: '24px' }}>
-        <h1 style={{
-          fontSize: 'clamp(1.4rem, 5vw, 2rem)', fontWeight: 800,
-          letterSpacing: '-0.04em', marginBottom: '6px',
-        }}>{group.name}</h1>
+        <h1 style={{ fontSize: 'clamp(1.4rem, 5vw, 2rem)', fontWeight: 800, letterSpacing: '-0.04em', marginBottom: '6px' }}>
+          {group.name}
+        </h1>
         <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', wordBreak: 'break-word' }}>
           {group.members.length} members: {group.members.map((m) => m.name).join(', ')}
         </p>
@@ -228,11 +234,13 @@ export default function GroupDetailPage() {
         background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '12px', padding: '4px',
       }}>
-        {['expenses', 'settlements'].map((tab) => (
+        {['expenses', 'settle'].map((tab) => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`tab-btn${activeTab === tab ? ' active' : ''}`}
-            style={{ flex: 1, textTransform: 'capitalize' }}>
-            {tab === 'expenses' ? '💳 Expenses' : '✅ Settlements'}
+            style={{ flex: 1 }}>
+            {tab === 'expenses'
+              ? '💳 Expenses'
+              : `✅ Settle Up${myDebtCount > 0 ? ` (${myDebtCount})` : ''}`}
           </button>
         ))}
       </div>
@@ -249,7 +257,10 @@ export default function GroupDetailPage() {
 
           {showExpenseForm && (
             <div className="glass-card" style={{ padding: 'clamp(16px, 4vw, 24px)', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '20px' }}>💳 New Expense</h2>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>💳 New Expense</h2>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+                Automatically split equally among all {group.members.length} members.
+              </p>
               {expenseError && <div className="alert-error" style={{ marginBottom: '14px' }}>{expenseError}</div>}
               <form onSubmit={handleExpenseSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div className="form-grid-2">
@@ -257,13 +268,13 @@ export default function GroupDetailPage() {
                     <label className="form-label">Description</label>
                     <input type="text" required value={expenseForm.description}
                       onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-                      placeholder="e.g. Dinner" className="input-field" />
+                      placeholder="e.g. Lunch" className="input-field" />
                   </div>
                   <div>
-                    <label className="form-label">Amount ($)</label>
-                    <input type="number" required min="0.01" step="0.01" value={expenseForm.amount}
+                    <label className="form-label">Amount (₨)</label>
+                    <input type="number" required min="1" step="1" value={expenseForm.amount}
                       onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                      placeholder="0.00" className="input-field" />
+                      placeholder="0" className="input-field" />
                   </div>
                   <div>
                     <label className="form-label">Category</label>
@@ -283,36 +294,18 @@ export default function GroupDetailPage() {
                   </div>
                 </div>
 
-                {/* Participants */}
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                    <label className="form-label" style={{ margin: 0 }}>Shares per member</label>
-                    <button type="button" onClick={splitEvenly}
-                      style={{ fontSize: '0.8rem', color: '#a5b4fc', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
-                      Split Evenly
-                    </button>
+                {expenseForm.amount && (
+                  <div style={{
+                    background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
+                    borderRadius: '10px', padding: '10px 14px',
+                    fontSize: '0.82rem', color: 'var(--text-secondary)',
+                  }}>
+                    Each person pays:{' '}
+                    <strong style={{ color: '#a5b4fc' }}>
+                      {formatCurrency(parseFloat(expenseForm.amount) / group.members.length)}
+                    </strong>
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {expenseForm.participants.map((p, i) => {
-                      const member = group.members.find((m) => m._id === p.user);
-                      return (
-                        <div key={p.user} className="member-share-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <span style={{
-                            fontSize: '0.85rem', color: 'var(--text-secondary)',
-                            minWidth: '90px', fontWeight: 500, flexShrink: 0,
-                          }}>{member?.name}</span>
-                          <input type="number" min="0" step="0.01" value={p.share}
-                            onChange={(e) => {
-                              const updated = [...expenseForm.participants];
-                              updated[i] = { ...updated[i], share: e.target.value };
-                              setExpenseForm({ ...expenseForm, participants: updated });
-                            }}
-                            className="input-field" style={{ flex: 1 }} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                )}
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px', flexWrap: 'wrap' }}>
                   <button type="submit" disabled={submitting} className="btn-primary">
@@ -352,15 +345,20 @@ export default function GroupDetailPage() {
                         {exp.description}
                       </p>
                       <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                        <span style={{ color: 'var(--text-secondary)' }}>{exp.paidBy.name}</span>
+                        Paid by <span style={{ color: 'var(--text-secondary)' }}>{exp.paidBy.name}</span>
                         {' · '}<span className={`cat-${exp.category}`}>{exp.category}</span>
-                        {' · '}{new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {' · '}{new Date(exp.date).toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                        {formatCurrency(exp.amount)}
-                      </span>
+                      <div style={{ textAlign: 'right' }}>
+                        <p style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                          {formatCurrency(exp.amount)}
+                        </p>
+                        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          ÷{exp.participants.length} = {formatCurrency(exp.amount / exp.participants.length)} each
+                        </p>
+                      </div>
                       {exp.paidBy._id === user._id && (
                         <button onClick={() => handleDeleteExpense(exp._id, exp.description)}
                           style={{
@@ -381,90 +379,110 @@ export default function GroupDetailPage() {
         </>
       )}
 
-      {/* SETTLEMENTS TAB */}
-      {activeTab === 'settlements' && (
+      {/* SETTLE UP TAB */}
+      {activeTab === 'settle' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-            <button onClick={() => setShowSettleForm(!showSettleForm)} className="btn-success"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>+</span> Record Settlement
-            </button>
+          {/* Who Owes Whom */}
+          <div style={{ marginBottom: '28px' }}>
+            <h2 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Who Owes Whom
+            </h2>
+            {debts.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: 'clamp(20px, 5vw, 32px) 24px',
+                background: 'rgba(16,185,129,0.04)',
+                border: '1px solid rgba(16,185,129,0.15)', borderRadius: '16px',
+              }}>
+                <div style={{ fontSize: '2rem', marginBottom: '8px' }}>🎉</div>
+                <p style={{ color: '#34d399', fontWeight: 600, fontSize: '0.9rem' }}>All settled up!</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {debts.map((debt, i) => {
+                  const isMe = debt.from._id === user._id;
+                  return (
+                    <div key={i} className="glass-card" style={{
+                      padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                      borderColor: isMe ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.08)',
+                    }}>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontWeight: 600, fontSize: '0.9rem', color: isMe ? '#f87171' : 'var(--text-primary)' }}>
+                          {isMe ? 'You' : debt.from.name}
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> owe </span>
+                          {debt.to.name}
+                        </p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                          {isMe ? "Tap 'I Paid' once you've sent the money" : 'Waiting for them to confirm'}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                        <span style={{ fontWeight: 800, fontSize: '1rem', color: isMe ? '#f87171' : 'var(--text-secondary)' }}>
+                          {formatCurrency(debt.amount)}
+                        </span>
+                        {isMe && (
+                          <button
+                            onClick={() => handleIPaid(debt)}
+                            disabled={submitting}
+                            className="btn-success"
+                            style={{ fontSize: '0.78rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
+                          >
+                            {submitting ? '…' : 'I Paid'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {showSettleForm && (
-            <div className="glass-card" style={{ padding: 'clamp(16px, 4vw, 24px)', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '20px' }}>✅ I paid back…</h2>
-              {settleError && <div className="alert-error" style={{ marginBottom: '14px' }}>{settleError}</div>}
-              <form onSubmit={handleSettle} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <label className="form-label">To member</label>
-                  <select required value={settleForm.toUser}
-                    onChange={(e) => setSettleForm({ ...settleForm, toUser: e.target.value })}
-                    className="input-field">
-                    <option value="">Select member</option>
-                    {otherMembers.map((m) => (
-                      <option key={m._id} value={m._id}>{m.name} ({m.email})</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">Amount ($)</label>
-                  <input type="number" required min="0.01" step="0.01" value={settleForm.amount}
-                    onChange={(e) => setSettleForm({ ...settleForm, amount: e.target.value })}
-                    placeholder="0.00" className="input-field" />
-                </div>
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                  <button type="submit" disabled={submitting} className="btn-success">
-                    {submitting ? 'Saving…' : 'Record Payment'}
-                  </button>
-                  <button type="button" onClick={() => setShowSettleForm(false)} className="btn-ghost">
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
-
-          {settlements.length === 0 ? (
-            <div style={{
-              textAlign: 'center', padding: 'clamp(28px, 6vw, 50px) 24px',
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px',
-            }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>✅</div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No settlements recorded yet.</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {settlements.map((s) => (
-                <div key={s._id} className="glass-card" style={{
-                  padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                    <div style={{
-                      width: '36px', height: '36px', flexShrink: 0,
-                      background: 'rgba(16,185,129,0.1)', borderRadius: '10px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem',
-                    }}>💸</div>
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        <span>{s.fromUser.name}</span>
-                        <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> paid </span>
-                        <span>{s.toUser.name}</span>
-                      </p>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {new Date(s.settledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
+          {/* Payment History */}
+          <div>
+            <h2 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Payment History
+            </h2>
+            {settlements.length === 0 ? (
+              <div style={{
+                textAlign: 'center', padding: 'clamp(20px, 5vw, 32px) 24px',
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px',
+              }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No payments recorded yet.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {settlements.map((s) => (
+                  <div key={s._id} className="glass-card" style={{
+                    padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                      <div style={{
+                        width: '36px', height: '36px', flexShrink: 0,
+                        background: 'rgba(16,185,129,0.1)', borderRadius: '10px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem',
+                      }}>💸</div>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <span>{s.fromUser._id === user._id ? 'You' : s.fromUser.name}</span>
+                          <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> paid </span>
+                          <span>{s.toUser._id === user._id ? 'you' : s.toUser.name}</span>
+                        </p>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          {new Date(s.settledAt).toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </p>
+                      </div>
                     </div>
+                    <span style={{ fontWeight: 800, color: '#34d399', fontSize: '0.95rem', flexShrink: 0 }}>
+                      {formatCurrency(s.amount)}
+                    </span>
                   </div>
-                  <span style={{ fontWeight: 800, color: '#34d399', fontSize: '0.95rem', flexShrink: 0 }}>
-                    {formatCurrency(s.amount)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

@@ -26,14 +26,17 @@ const getExpenses = async (req, res) => {
 // POST /api/groups/:groupId/expenses
 const createExpense = async (req, res) => {
   try {
-    await assertGroupMember(req.params.groupId, req.user._id);
+    const group = await assertGroupMember(req.params.groupId, req.user._id);
 
-    const { amount, description, date, participants, category } = req.body;
+    const { amount, description, date, category } = req.body;
 
-    const totalShares = participants.reduce((sum, p) => sum + p.share, 0);
-    if (Math.abs(totalShares - amount) > 0.01) {
-      return res.status(400).json({ message: 'Participant shares must sum to the total amount' });
-    }
+    const memberCount = group.members.length;
+    const perPerson = parseFloat((amount / memberCount).toFixed(2));
+    const remainder = parseFloat((amount - perPerson * memberCount).toFixed(2));
+    const participants = group.members.map((memberId, i) => ({
+      user: memberId,
+      share: i === 0 ? parseFloat((perPerson + remainder).toFixed(2)) : perPerson,
+    }));
 
     const expense = await Expense.create({
       group: req.params.groupId,
