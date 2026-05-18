@@ -1,28 +1,22 @@
 const mongoose = require('mongoose');
 
+let cached = global.mongoose;
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
-  const maxRetries = 5;
-  let attempts = 0;
-
-  const tryConnect = async () => {
-    try {
-      const conn = await mongoose.connect(process.env.MONGODB_URI, {
-        serverSelectionTimeoutMS: 10000,
-      });
-      console.log(`MongoDB Connected: ${conn.connection.host}`);
-    } catch (error) {
-      attempts++;
-      console.error(`MongoDB connection error (attempt ${attempts}/${maxRetries}): ${error.message}`);
-      if (attempts < maxRetries) {
-        console.log(`Retrying in 5 seconds...`);
-        setTimeout(tryConnect, 5000);
-      } else {
-        console.error('Max retries reached. Could not connect to MongoDB.');
-      }
-    }
-  };
-
-  await tryConnect();
+  if (cached.conn && mongoose.connection.readyState === 1) {
+    return cached.conn;
+  }
+  if (!cached.promise) {
+    cached.promise = mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      bufferCommands: false,
+    });
+  }
+  cached.conn = await cached.promise;
+  return cached.conn;
 };
 
 module.exports = connectDB;
