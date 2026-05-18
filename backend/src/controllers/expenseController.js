@@ -28,12 +28,20 @@ const createExpense = async (req, res) => {
   try {
     const group = await assertGroupMember(req.params.groupId, req.user._id);
 
-    const { amount, description, date, category } = req.body;
+    const { amount, description, date, category, participantIds } = req.body;
 
-    const memberCount = group.members.length;
+    const selectedMembers =
+      participantIds && participantIds.length > 0
+        ? group.members.filter((m) => participantIds.includes(m.toString()))
+        : group.members;
+
+    if (selectedMembers.length === 0)
+      return res.status(400).json({ message: 'Select at least one participant' });
+
+    const memberCount = selectedMembers.length;
     const perPerson = parseFloat((amount / memberCount).toFixed(2));
     const remainder = parseFloat((amount - perPerson * memberCount).toFixed(2));
-    const participants = group.members.map((memberId, i) => ({
+    const participants = selectedMembers.map((memberId, i) => ({
       user: memberId,
       share: i === 0 ? parseFloat((perPerson + remainder).toFixed(2)) : perPerson,
     }));

@@ -54,6 +54,7 @@ export default function GroupDetailPage() {
 
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', category: 'other', date: '' });
+  const [selectedParticipants, setSelectedParticipants] = useState(null); // null = all members
   const [expenseError, setExpenseError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -83,15 +84,18 @@ export default function GroupDetailPage() {
     setExpenseError('');
     setSubmitting(true);
     try {
+      const participantIds = selectedParticipants ?? group.members.map((m) => m._id);
       const { data: newExpense } = await expenseService.create(id, {
         description: expenseForm.description,
         amount: parseFloat(expenseForm.amount),
         category: expenseForm.category,
         date: expenseForm.date || undefined,
+        participantIds,
       });
       setExpenses((prev) => [newExpense, ...prev]);
       setShowExpenseForm(false);
       setExpenseForm({ description: '', amount: '', category: 'other', date: '' });
+      setSelectedParticipants(null);
       toast.success('Expense added!');
       const { data: newBalances } = await expenseService.getBalances(id);
       setBalances(newBalances);
@@ -294,24 +298,67 @@ export default function GroupDetailPage() {
                   </div>
                 </div>
 
-                {expenseForm.amount && (
-                  <div style={{
-                    background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
-                    borderRadius: '10px', padding: '10px 14px',
-                    fontSize: '0.82rem', color: 'var(--text-secondary)',
-                  }}>
-                    Each person pays:{' '}
-                    <strong style={{ color: '#a5b4fc' }}>
-                      {formatCurrency(parseFloat(expenseForm.amount) / group.members.length)}
-                    </strong>
+                {/* Split among */}
+                <div>
+                  <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>
+                    Split among
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: '6px' }}>
+                      ({(selectedParticipants ?? group.members.map((m) => m._id)).length} of {group.members.length} selected)
+                    </span>
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {group.members.map((m) => {
+                      const active = selectedParticipants === null || selectedParticipants.includes(m._id);
+                      return (
+                        <button
+                          key={m._id}
+                          type="button"
+                          onClick={() => {
+                            const current = selectedParticipants ?? group.members.map((x) => x._id);
+                            const next = active
+                              ? current.filter((pid) => pid !== m._id)
+                              : [...current, m._id];
+                            setSelectedParticipants(next.length === group.members.length ? null : next);
+                          }}
+                          style={{
+                            padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600,
+                            cursor: 'pointer', transition: 'all 0.15s',
+                            background: active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)',
+                            border: active ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                            color: active ? '#a5b4fc' : 'var(--text-muted)',
+                          }}
+                        >
+                          {m.name}{m._id === user._id ? ' (you)' : ''}
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+
+                {expenseForm.amount && (() => {
+                  const count = (selectedParticipants ?? group.members.map((m) => m._id)).length;
+                  return count > 0 ? (
+                    <div style={{
+                      background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
+                      borderRadius: '10px', padding: '10px 14px',
+                      fontSize: '0.82rem', color: 'var(--text-secondary)',
+                    }}>
+                      Each person pays:{' '}
+                      <strong style={{ color: '#a5b4fc' }}>
+                        {formatCurrency(parseFloat(expenseForm.amount) / count)}
+                      </strong>
+                      {' '}({count} {count === 1 ? 'person' : 'people'})
+                    </div>
+                  ) : (
+                    <div className="alert-error">Select at least one participant</div>
+                  );
+                })()}
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px', flexWrap: 'wrap' }}>
                   <button type="submit" disabled={submitting} className="btn-primary">
                     {submitting ? 'Adding…' : 'Add Expense'}
                   </button>
-                  <button type="button" onClick={() => setShowExpenseForm(false)} className="btn-ghost">
+                  <button type="button" onClick={() => { setShowExpenseForm(false); setSelectedParticipants(null); }} className="btn-ghost">
                     Cancel
                   </button>
                 </div>
