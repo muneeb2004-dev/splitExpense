@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { groupService, expenseService } from '../services/api';
+import { groupService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/format';
 
@@ -11,29 +11,13 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadAll = async () => {
-      try {
-        const gRes = await groupService.getAll();
-        const groupList = gRes.data;
-        setGroups(groupList);
-        const balResults = await Promise.allSettled(
-          groupList.map((g) => expenseService.getBalances(g._id))
-        );
-        const bmap = {};
-        balResults.forEach((result, idx) => {
-          if (result.status === 'fulfilled') {
-            const groupId = groupList[idx]._id;
-            bmap[groupId] = result.value.data[user._id] || 0;
-          }
-        });
-        setAllBalances(bmap);
-      } catch {
-        // silently fail
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadAll();
+    groupService.getDashboard()
+      .then(({ data }) => {
+        setGroups(data.groups);
+        setAllBalances(data.balances);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const totalOwe = Object.values(allBalances).filter((b) => b < 0).reduce((s, b) => s + b, 0);

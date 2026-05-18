@@ -32,6 +32,7 @@ export const authService = {
 
 export const groupService = {
   getAll: () => api.get('/groups'),
+  getDashboard: () => api.get('/groups/dashboard'),
   getOne: (id) => api.get(`/groups/${id}`),
   create: (data) => api.post('/groups', data),
   delete: (id) => api.delete(`/groups/${id}`),

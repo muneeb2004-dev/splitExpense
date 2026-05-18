@@ -82,10 +82,12 @@ export default function GroupDetailPage() {
           .filter((p) => p.share > 0)
           .map((p) => ({ user: p.user, share: parseFloat(p.share) })),
       };
-      await expenseService.create(id, payload);
+      const { data: newExpense } = await expenseService.create(id, payload);
+      setExpenses((prev) => [newExpense, ...prev]);
       setShowExpenseForm(false);
       toast.success('Expense added!');
-      await fetchAll();
+      const { data: newBalances } = await expenseService.getBalances(id);
+      setBalances(newBalances);
     } catch (err) {
       setExpenseError(err.response?.data?.message || 'Failed to add expense');
     } finally {
@@ -98,11 +100,13 @@ export default function GroupDetailPage() {
     setSettleError('');
     setSubmitting(true);
     try {
-      await settlementService.create(id, { toUser: settleForm.toUser, amount: parseFloat(settleForm.amount) });
+      const { data: newSettlement } = await settlementService.create(id, { toUser: settleForm.toUser, amount: parseFloat(settleForm.amount) });
+      setSettlements((prev) => [newSettlement, ...prev]);
       setShowSettleForm(false);
       setSettleForm({ toUser: '', amount: '' });
       toast.success('Settlement recorded!');
-      await fetchAll();
+      const { data: newBalances } = await expenseService.getBalances(id);
+      setBalances(newBalances);
     } catch (err) {
       setSettleError(err.response?.data?.message || 'Failed to record settlement');
     } finally {

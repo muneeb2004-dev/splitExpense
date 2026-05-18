@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { getGroups, createGroup, getGroup, deleteGroup } = require('../controllers/groupController');
+const { getDashboard, getGroups, createGroup, getGroup, deleteGroup } = require('../controllers/groupController');
 const { getExpenses, createExpense, deleteExpense, getBalances } = require('../controllers/expenseController');
 const { getSettlements, createSettlement } = require('../controllers/settlementController');
 const { protect } = require('../middleware/auth');
@@ -7,6 +7,7 @@ const { protect } = require('../middleware/auth');
 router.use(protect);
 
 router.route('/').get(getGroups).post(createGroup);
+router.get('/dashboard', getDashboard);
 router.route('/:id').get(getGroup).delete(deleteGroup);
 
 router.route('/:groupId/expenses').get(getExpenses).post(createExpense);
