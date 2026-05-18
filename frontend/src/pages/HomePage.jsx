@@ -16,7 +16,7 @@ export default function HomePage() {
       {/* Hero */}
       <section style={{
         textAlign: 'center',
-        padding: '80px 24px 60px',
+        padding: 'clamp(40px, 8vw, 80px) 20px clamp(32px, 6vw, 60px)',
         maxWidth: '800px',
         margin: '0 auto',
       }}>
@@ -28,7 +28,7 @@ export default function HomePage() {
           border: '1px solid rgba(99,102,241,0.25)',
           borderRadius: '999px',
           padding: '6px 16px',
-          marginBottom: '28px',
+          marginBottom: '24px',
           fontSize: '0.8rem',
           color: '#a5b4fc',
           fontWeight: 500,
@@ -37,7 +37,7 @@ export default function HomePage() {
         </div>
 
         <h1 style={{
-          fontSize: 'clamp(2.4rem, 6vw, 3.8rem)',
+          fontSize: 'clamp(2rem, 7vw, 3.8rem)',
           fontWeight: 800,
           lineHeight: 1.1,
           letterSpacing: '-0.04em',
@@ -55,59 +55,41 @@ export default function HomePage() {
         </h1>
 
         <p style={{
-          fontSize: '1.1rem',
+          fontSize: 'clamp(0.95rem, 2.5vw, 1.1rem)',
           color: 'var(--text-secondary)',
           maxWidth: '520px',
-          margin: '0 auto 36px',
+          margin: '0 auto 32px',
           lineHeight: 1.7,
+          padding: '0 8px',
         }}>
           Create groups, track shared expenses, and settle up with friends — all in one beautiful place.
         </p>
 
         {user ? (
-          <Link
-            to="/groups"
-            className="btn-primary"
-            style={{
-              textDecoration: 'none',
-              display: 'inline-block',
-              padding: '14px 32px',
-              fontSize: '1rem',
-              borderRadius: '12px',
-            }}
-          >
+          <Link to="/groups" className="btn-primary" style={{
+            textDecoration: 'none', display: 'inline-block',
+            padding: '14px 32px', fontSize: '1rem', borderRadius: '12px',
+          }}>
             Go to My Groups →
           </Link>
         ) : (
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <Link
-              to="/register"
-              className="btn-primary"
-              style={{
-                textDecoration: 'none',
-                display: 'inline-block',
-                padding: '14px 32px',
-                fontSize: '1rem',
-                borderRadius: '12px',
-              }}
-            >
+          <div style={{
+            display: 'flex', gap: '12px', justifyContent: 'center',
+            flexWrap: 'wrap', padding: '0 16px',
+          }}>
+            <Link to="/register" className="btn-primary" style={{
+              textDecoration: 'none', display: 'inline-block',
+              padding: '13px 28px', fontSize: '1rem', borderRadius: '12px',
+            }}>
               Get Started Free →
             </Link>
-            <Link
-              to="/login"
-              style={{
-                textDecoration: 'none',
-                display: 'inline-block',
-                padding: '14px 32px',
-                fontSize: '1rem',
-                borderRadius: '12px',
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.12)',
-                color: 'var(--text-primary)',
-                fontWeight: 600,
-                transition: 'all 0.2s',
-              }}
-            >
+            <Link to="/login" style={{
+              textDecoration: 'none', display: 'inline-block',
+              padding: '13px 28px', fontSize: '1rem', borderRadius: '12px',
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              color: 'var(--text-primary)', fontWeight: 600,
+            }}>
               Sign In
             </Link>
           </div>
@@ -118,29 +100,18 @@ export default function HomePage() {
       <section style={{
         maxWidth: '1000px',
         margin: '0 auto',
-        padding: '0 24px 80px',
+        padding: '0 20px clamp(40px, 8vw, 80px)',
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-        gap: '16px',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '14px',
       }}>
         {features.map((f) => (
-          <div key={f.title} className="glass-card" style={{ padding: '24px' }}>
-            <div style={{
-              fontSize: '2rem',
-              marginBottom: '12px',
-              display: 'block',
-            }}>{f.icon}</div>
-            <h3 style={{
-              fontSize: '1rem',
-              fontWeight: 700,
-              marginBottom: '8px',
-              color: 'var(--text-primary)',
-            }}>{f.title}</h3>
-            <p style={{
-              fontSize: '0.85rem',
-              color: 'var(--text-secondary)',
-              lineHeight: 1.6,
-            }}>{f.desc}</p>
+          <div key={f.title} className="glass-card" style={{ padding: 'clamp(16px, 4vw, 24px)' }}>
+            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>{f.icon}</div>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
+              {f.title}
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>{f.desc}</p>
           </div>
         ))}
       </section>

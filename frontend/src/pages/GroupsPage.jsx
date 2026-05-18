@@ -69,9 +69,9 @@ export default function GroupsPage() {
   };
 
   return (
-    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '40px 24px' }}>
+    <div className="page-container">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+      <div className="page-header">
         <div>
           <h1 style={{ fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: '4px' }}>
             My Groups
@@ -83,7 +83,7 @@ export default function GroupsPage() {
         <button
           onClick={() => setShowCreate(!showCreate)}
           className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', whiteSpace: 'nowrap', flexShrink: 0 }}
         >
           <span style={{ fontSize: '1.1rem' }}>+</span> New Group
         </button>
@@ -91,7 +91,7 @@ export default function GroupsPage() {
 
       {/* Create Form */}
       {showCreate && (
-        <div className="glass-card" style={{ padding: '28px', marginBottom: '24px' }}>
+        <div className="glass-card" style={{ padding: 'clamp(18px, 4vw, 28px)', marginBottom: '24px' }}>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px', color: 'var(--text-primary)' }}>
             ✨ Create New Group
           </h2>
@@ -99,31 +99,22 @@ export default function GroupsPage() {
           <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div>
               <label className="form-label">Group Name</label>
-              <input
-                type="text"
-                value={form.name}
+              <input type="text" value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-                placeholder="e.g. Weekend Trip, Roommates"
-                className="input-field"
-              />
+                required placeholder="e.g. Weekend Trip, Roommates" className="input-field" />
             </div>
             <div>
               <label className="form-label">
                 Invite Members <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(comma-separated emails)</span>
               </label>
-              <input
-                type="text"
-                value={form.memberEmails}
+              <input type="text" value={form.memberEmails}
                 onChange={(e) => setForm({ ...form, memberEmails: e.target.value })}
-                placeholder="alice@example.com, bob@example.com"
-                className="input-field"
-              />
+                placeholder="alice@example.com, bob@example.com" className="input-field" />
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
                 Leave blank to create a solo group
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+            <div style={{ display: 'flex', gap: '10px', paddingTop: '4px', flexWrap: 'wrap' }}>
               <button type="submit" disabled={creating} className="btn-primary">
                 {creating ? 'Creating…' : 'Create Group'}
               </button>
@@ -142,8 +133,7 @@ export default function GroupsPage() {
         <div className="alert-error" style={{ textAlign: 'center' }}>{error}</div>
       ) : groups.length === 0 ? (
         <div style={{
-          textAlign: 'center',
-          padding: '60px 24px',
+          textAlign: 'center', padding: 'clamp(32px, 8vw, 60px) 24px',
           background: 'rgba(255,255,255,0.03)',
           border: '1px dashed rgba(255,255,255,0.1)',
           borderRadius: '16px',
@@ -159,66 +149,43 @@ export default function GroupsPage() {
           {groups.map((g, idx) => {
             const isOwner = g.createdBy._id === user?._id || g.createdBy === user?._id;
             return (
-              <Link
-                key={g._id}
-                to={`/groups/${g._id}`}
-                style={{ textDecoration: 'none' }}
-              >
-                <div
-                  className="glass-card"
-                  style={{
-                    padding: '20px 24px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '16px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {/* Group Avatar */}
+              <Link key={g._id} to={`/groups/${g._id}`} style={{ textDecoration: 'none' }}>
+                <div className="glass-card" style={{
+                  padding: 'clamp(14px, 3vw, 20px) clamp(16px, 4vw, 24px)',
+                  display: 'flex', alignItems: 'center', gap: '14px', cursor: 'pointer',
+                }}>
+                  {/* Avatar */}
                   <div style={{
-                    width: '48px', height: '48px',
-                    borderRadius: '14px',
+                    width: '44px', height: '44px', borderRadius: '12px',
                     background: avatarColors[idx % avatarColors.length],
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '1.3rem',
-                    flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '1.2rem', flexShrink: 0,
                     boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                   }}>
                     {g.name.charAt(0).toUpperCase()}
                   </div>
-
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h2 style={{
-                      fontSize: '1rem',
-                      fontWeight: 700,
-                      color: 'var(--text-primary)',
-                      marginBottom: '4px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)',
+                      marginBottom: '3px',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>{g.name}</h2>
-                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      {g.members.length} member{g.members.length !== 1 ? 's' : ''} · Created by{' '}
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      {g.members.length} member{g.members.length !== 1 ? 's' : ''} ·{' '}
                       <span style={{ color: 'var(--text-secondary)' }}>{g.createdBy.name}</span>
                     </p>
                   </div>
-
                   {/* Actions */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                     {isOwner && (
-                      <button
-                        onClick={(e) => handleDelete(g._id, g.name, e)}
-                        disabled={deletingId === g._id}
-                        className="btn-danger"
-                        style={{ fontSize: '0.75rem', padding: '5px 10px' }}
-                      >
+                      <button onClick={(e) => handleDelete(g._id, g.name, e)}
+                        disabled={deletingId === g._id} className="btn-danger"
+                        style={{ fontSize: '0.75rem', padding: '5px 10px' }}>
                         {deletingId === g._id ? '…' : '🗑'}
                       </button>
                     )}
-                    <span style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>→</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>→</span>
                   </div>
                 </div>
               </Link>

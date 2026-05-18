@@ -27,8 +27,7 @@ export default function GroupDetailPage() {
 
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expenseForm, setExpenseForm] = useState({
-    description: '', amount: '', category: 'other', date: '',
-    participants: [],
+    description: '', amount: '', category: 'other', date: '', participants: [],
   });
   const [expenseError, setExpenseError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -66,10 +65,7 @@ export default function GroupDetailPage() {
     const amt = parseFloat(expenseForm.amount) || 0;
     const count = expenseForm.participants.length;
     const share = count > 0 ? parseFloat((amt / count).toFixed(2)) : 0;
-    setExpenseForm((f) => ({
-      ...f,
-      participants: f.participants.map((p) => ({ ...p, share })),
-    }));
+    setExpenseForm((f) => ({ ...f, participants: f.participants.map((p) => ({ ...p, share })) }));
   };
 
   const handleExpenseSubmit = async (e) => {
@@ -127,10 +123,7 @@ export default function GroupDetailPage() {
     }
   };
 
-  if (loading) return (
-    <div className="page-loader"><div className="spinner" /></div>
-  );
-
+  if (loading) return <div className="page-loader"><div className="spinner" /></div>;
   if (error) return (
     <div style={{ textAlign: 'center', padding: '60px 24px' }}>
       <div className="alert-error" style={{ display: 'inline-block' }}>{error}</div>
@@ -141,17 +134,14 @@ export default function GroupDetailPage() {
   const myBalance = balances[user._id] || 0;
 
   return (
-    <div style={{ maxWidth: '760px', margin: '0 auto', padding: '32px 24px' }}>
+    <div className="page-container">
       {/* Back */}
-      <button
-        onClick={() => navigate('/groups')}
-        style={{
-          background: 'none', border: 'none', cursor: 'pointer',
-          color: 'var(--text-muted)', fontSize: '0.85rem',
-          display: 'flex', alignItems: 'center', gap: '6px',
-          marginBottom: '20px', padding: 0,
-          transition: 'color 0.2s',
-        }}
+      <button onClick={() => navigate('/groups')} style={{
+        background: 'none', border: 'none', cursor: 'pointer',
+        color: 'var(--text-muted)', fontSize: '0.85rem',
+        display: 'flex', alignItems: 'center', gap: '6px',
+        marginBottom: '20px', padding: 0, transition: 'color 0.2s',
+      }}
         onMouseEnter={(e) => e.currentTarget.style.color = '#a5b4fc'}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
       >
@@ -159,33 +149,27 @@ export default function GroupDetailPage() {
       </button>
 
       {/* Group Header */}
-      <div style={{ marginBottom: '28px' }}>
+      <div style={{ marginBottom: '24px' }}>
         <h1 style={{
-          fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.04em',
-          marginBottom: '6px',
+          fontSize: 'clamp(1.4rem, 5vw, 2rem)', fontWeight: 800,
+          letterSpacing: '-0.04em', marginBottom: '6px',
         }}>{group.name}</h1>
-        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', wordBreak: 'break-word' }}>
           {group.members.length} members: {group.members.map((m) => m.name).join(', ')}
         </p>
       </div>
 
       {/* Summary Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '12px',
-        marginBottom: '28px',
-      }}>
-        {/* My Balance Card */}
+      <div className="summary-grid">
         <div className="glass-card" style={{
-          padding: '20px',
+          padding: 'clamp(14px, 3vw, 20px)',
           borderColor: myBalance > 0 ? 'rgba(16,185,129,0.3)' : myBalance < 0 ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.08)',
         }}>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Your Balance
           </p>
           <p style={{
-            fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.03em',
+            fontSize: 'clamp(1.4rem, 5vw, 1.8rem)', fontWeight: 800, letterSpacing: '-0.03em',
             color: myBalance > 0 ? '#34d399' : myBalance < 0 ? '#f87171' : 'var(--text-secondary)',
           }}>
             {myBalance > 0 ? '+' : ''}{formatCurrency(myBalance)}
@@ -195,12 +179,11 @@ export default function GroupDetailPage() {
           </p>
         </div>
 
-        {/* Total Expenses */}
-        <div className="glass-card" style={{ padding: '20px' }}>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div className="glass-card" style={{ padding: 'clamp(14px, 3vw, 20px)' }}>
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Total Expenses
           </p>
-          <p style={{ fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-primary)' }}>
+          <p style={{ fontSize: 'clamp(1.4rem, 5vw, 1.8rem)', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--text-primary)' }}>
             {formatCurrency(expenses.reduce((sum, e) => sum + e.amount, 0))}
           </p>
           <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px' }}>
@@ -209,32 +192,24 @@ export default function GroupDetailPage() {
         </div>
       </div>
 
-      {/* All Balances */}
-      <div className="glass-card" style={{ padding: '20px', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      {/* Balance Breakdown */}
+      <div className="glass-card" style={{ padding: 'clamp(14px, 3vw, 20px)', marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Balance Breakdown
         </h2>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           {group.members.map((m) => {
             const bal = balances[m._id] || 0;
             return (
               <div key={m._id} style={{
                 background: 'rgba(255,255,255,0.04)',
                 border: `1px solid ${bal > 0 ? 'rgba(16,185,129,0.2)' : bal < 0 ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)'}`,
-                borderRadius: '10px',
-                padding: '10px 14px',
-                minWidth: '120px',
+                borderRadius: '10px', padding: '10px 14px', minWidth: '110px',
               }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 500 }}>
-                  {m.name}
-                  {m._id === user._id && (
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>(you)</span>
-                  )}
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 500 }}>
+                  {m.name}{m._id === user._id && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>(you)</span>}
                 </p>
-                <p style={{
-                  fontSize: '1rem', fontWeight: 700,
-                  color: bal > 0 ? '#34d399' : bal < 0 ? '#f87171' : 'var(--text-muted)',
-                }}>
+                <p style={{ fontSize: '1rem', fontWeight: 700, color: bal > 0 ? '#34d399' : bal < 0 ? '#f87171' : 'var(--text-muted)' }}>
                   {bal > 0 ? '+' : ''}{formatCurrency(bal)}
                 </p>
               </div>
@@ -245,45 +220,35 @@ export default function GroupDetailPage() {
 
       {/* Tabs */}
       <div style={{
-        display: 'flex',
-        gap: '6px',
-        marginBottom: '20px',
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: '12px',
-        padding: '4px',
+        display: 'flex', gap: '6px', marginBottom: '20px',
+        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '12px', padding: '4px',
       }}>
         {['expenses', 'settlements'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+          <button key={tab} onClick={() => setActiveTab(tab)}
             className={`tab-btn${activeTab === tab ? ' active' : ''}`}
-            style={{ flex: 1, textTransform: 'capitalize' }}
-          >
+            style={{ flex: 1, textTransform: 'capitalize' }}>
             {tab === 'expenses' ? '💳 Expenses' : '✅ Settlements'}
           </button>
         ))}
       </div>
 
-      {/* Expenses Tab */}
+      {/* EXPENSES TAB */}
       {activeTab === 'expenses' && (
         <>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-            <button
-              onClick={() => setShowExpenseForm(!showExpenseForm)}
-              className="btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
+            <button onClick={() => setShowExpenseForm(!showExpenseForm)} className="btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>+</span> Add Expense
             </button>
           </div>
 
           {showExpenseForm && (
-            <div className="glass-card" style={{ padding: '24px', marginBottom: '20px' }}>
+            <div className="glass-card" style={{ padding: 'clamp(16px, 4vw, 24px)', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '20px' }}>💳 New Expense</h2>
               {expenseError && <div className="alert-error" style={{ marginBottom: '14px' }}>{expenseError}</div>}
               <form onSubmit={handleExpenseSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div className="form-grid-2">
                   <div>
                     <label className="form-label">Description</label>
                     <input type="text" required value={expenseForm.description}
@@ -327,11 +292,10 @@ export default function GroupDetailPage() {
                     {expenseForm.participants.map((p, i) => {
                       const member = group.members.find((m) => m._id === p.user);
                       return (
-                        <div key={p.user} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div key={p.user} className="member-share-row" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <span style={{
                             fontSize: '0.85rem', color: 'var(--text-secondary)',
-                            width: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            fontWeight: 500,
+                            minWidth: '90px', fontWeight: 500, flexShrink: 0,
                           }}>{member?.name}</span>
                           <input type="number" min="0" step="0.01" value={p.share}
                             onChange={(e) => {
@@ -346,7 +310,7 @@ export default function GroupDetailPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px', flexWrap: 'wrap' }}>
                   <button type="submit" disabled={submitting} className="btn-primary">
                     {submitting ? 'Adding…' : 'Add Expense'}
                   </button>
@@ -360,10 +324,9 @@ export default function GroupDetailPage() {
 
           {expenses.length === 0 ? (
             <div style={{
-              textAlign: 'center', padding: '50px 24px',
+              textAlign: 'center', padding: 'clamp(28px, 6vw, 50px) 24px',
               background: 'rgba(255,255,255,0.02)',
-              border: '1px dashed rgba(255,255,255,0.1)',
-              borderRadius: '16px',
+              border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px',
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>💳</div>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No expenses yet. Add your first one!</p>
@@ -371,39 +334,31 @@ export default function GroupDetailPage() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {expenses.map((exp) => (
-                <div key={exp._id} className="glass-card" style={{ padding: '16px 20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    {/* Category icon */}
+                <div key={exp._id} className="glass-card" style={{ padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{
-                      width: '40px', height: '40px', flexShrink: 0,
-                      background: 'rgba(255,255,255,0.06)',
-                      borderRadius: '10px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '1.2rem',
+                      width: '38px', height: '38px', flexShrink: 0,
+                      background: 'rgba(255,255,255,0.06)', borderRadius: '10px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem',
                     }}>
                       {CAT_ICONS[exp.category] || '📦'}
                     </div>
-                    {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px' }}>
+                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {exp.description}
                       </p>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        Paid by <span style={{ color: 'var(--text-secondary)' }}>{exp.paidBy.name}</span>
-                        {' · '}
-                        <span className={`cat-${exp.category}`}>{exp.category}</span>
-                        {' · '}
-                        {new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{exp.paidBy.name}</span>
+                        {' · '}<span className={`cat-${exp.category}`}>{exp.category}</span>
+                        {' · '}{new Date(exp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </p>
                     </div>
-                    {/* Amount + Delete */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
-                      <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                         {formatCurrency(exp.amount)}
                       </span>
                       {exp.paidBy._id === user._id && (
-                        <button
-                          onClick={() => handleDeleteExpense(exp._id, exp.description)}
+                        <button onClick={() => handleDeleteExpense(exp._id, exp.description)}
                           style={{
                             background: 'none', border: 'none', cursor: 'pointer',
                             color: 'var(--text-muted)', fontSize: '1rem', padding: '4px',
@@ -411,9 +366,7 @@ export default function GroupDetailPage() {
                           }}
                           onMouseEnter={(e) => e.currentTarget.style.color = '#f87171'}
                           onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
-                        >
-                          🗑
-                        </button>
+                        >🗑</button>
                       )}
                     </div>
                   </div>
@@ -424,21 +377,18 @@ export default function GroupDetailPage() {
         </>
       )}
 
-      {/* Settlements Tab */}
+      {/* SETTLEMENTS TAB */}
       {activeTab === 'settlements' && (
         <>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-            <button
-              onClick={() => setShowSettleForm(!showSettleForm)}
-              className="btn-success"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
+            <button onClick={() => setShowSettleForm(!showSettleForm)} className="btn-success"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span>+</span> Record Settlement
             </button>
           </div>
 
           {showSettleForm && (
-            <div className="glass-card" style={{ padding: '24px', marginBottom: '20px' }}>
+            <div className="glass-card" style={{ padding: 'clamp(16px, 4vw, 24px)', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '20px' }}>✅ I paid back…</h2>
               {settleError && <div className="alert-error" style={{ marginBottom: '14px' }}>{settleError}</div>}
               <form onSubmit={handleSettle} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -459,7 +409,7 @@ export default function GroupDetailPage() {
                     onChange={(e) => setSettleForm({ ...settleForm, amount: e.target.value })}
                     placeholder="0.00" className="input-field" />
                 </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                   <button type="submit" disabled={submitting} className="btn-success">
                     {submitting ? 'Saving…' : 'Record Payment'}
                   </button>
@@ -473,10 +423,9 @@ export default function GroupDetailPage() {
 
           {settlements.length === 0 ? (
             <div style={{
-              textAlign: 'center', padding: '50px 24px',
+              textAlign: 'center', padding: 'clamp(28px, 6vw, 50px) 24px',
               background: 'rgba(255,255,255,0.02)',
-              border: '1px dashed rgba(255,255,255,0.1)',
-              borderRadius: '16px',
+              border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px',
             }}>
               <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>✅</div>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No settlements recorded yet.</p>
@@ -485,19 +434,17 @@ export default function GroupDetailPage() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {settlements.map((s) => (
                 <div key={s._id} className="glass-card" style={{
-                  padding: '16px 20px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                     <div style={{
-                      width: '36px', height: '36px',
-                      background: 'rgba(16,185,129,0.1)',
-                      borderRadius: '10px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '1rem',
+                      width: '36px', height: '36px', flexShrink: 0,
+                      background: 'rgba(16,185,129,0.1)', borderRadius: '10px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem',
                     }}>💸</div>
-                    <div>
-                      <p style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: '0.88rem', color: 'var(--text-primary)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         <span>{s.fromUser.name}</span>
                         <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> paid </span>
                         <span>{s.toUser.name}</span>
@@ -507,7 +454,7 @@ export default function GroupDetailPage() {
                       </p>
                     </div>
                   </div>
-                  <span style={{ fontWeight: 800, color: '#34d399', fontSize: '1rem' }}>
+                  <span style={{ fontWeight: 800, color: '#34d399', fontSize: '0.95rem', flexShrink: 0 }}>
                     {formatCurrency(s.amount)}
                   </span>
                 </div>
