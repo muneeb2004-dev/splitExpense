@@ -27,24 +27,43 @@ const getExpenses = async (req, res) => {
 const createExpense = async (req, res) => {
   try {
     const group = await assertGroupMember(req.params.groupId, req.user._id);
+    const { amount, description, date, category, participantIds, shares } = req.body;
 
-    const { amount, description, date, category, participantIds } = req.body;
+    let participants;
 
-    const selectedMembers =
-      participantIds && participantIds.length > 0
-        ? group.members.filter((m) => participantIds.includes(m.toString()))
-        : group.members;
+    if (shares && shares.length > 0) {
+      // Custom split — validate shares sum equals amount (±0.01 tolerance)
+      const sum = shares.reduce((s, p) => s + p.share, 0);
+      if (Math.abs(sum - amount) > 0.01)
+        return res.status(400).json({ message: `Shares total (${sum.toFixed(2)}) must equal the expense amount (${amount})` });
 
-    if (selectedMembers.length === 0)
-      return res.status(400).json({ message: 'Select at least one participant' });
+      const memberIds = group.members.map((m) => m.toString());
+      for (const p of shares) {
+        if (!memberIds.includes(p.userId))
+          return res.status(400).json({ message: 'A share recipient is not a group member' });
+        if (p.share < 0)
+          return res.status(400).json({ message: 'Share amounts cannot be negative' });
+      }
 
-    const memberCount = selectedMembers.length;
-    const perPerson = parseFloat((amount / memberCount).toFixed(2));
-    const remainder = parseFloat((amount - perPerson * memberCount).toFixed(2));
-    const participants = selectedMembers.map((memberId, i) => ({
-      user: memberId,
-      share: i === 0 ? parseFloat((perPerson + remainder).toFixed(2)) : perPerson,
-    }));
+      participants = shares.map((p) => ({ user: p.userId, share: p.share }));
+    } else {
+      // Equal split
+      const selectedMembers =
+        participantIds && participantIds.length > 0
+          ? group.members.filter((m) => participantIds.includes(m.toString()))
+          : group.members;
+
+      if (selectedMembers.length === 0)
+        return res.status(400).json({ message: 'Select at least one participant' });
+
+      const memberCount = selectedMembers.length;
+      const perPerson = parseFloat((amount / memberCount).toFixed(2));
+      const remainder = parseFloat((amount - perPerson * memberCount).toFixed(2));
+      participants = selectedMembers.map((memberId, i) => ({
+        user: memberId,
+        share: i === 0 ? parseFloat((perPerson + remainder).toFixed(2)) : perPerson,
+      }));
+    }
 
     const expense = await Expense.create({
       group: req.params.groupId,
@@ -89,9 +108,9 @@ const getBalances = async (req, res) => {
     const group = await assertGroupMember(req.params.groupId, req.user._id);
     const expenses = await Expense.find({ group: req.params.groupId });
     const Settlement = require('../models/Settlement');
-    const settlements = await Settlement.find({ group: req.params.groupId });
+    // Only accepted settlements affect balances — pending requests are not yet confirmed
+    const settlements = await Settlement.find({ group: req.params.groupId, status: 'accepted' });
 
-    // net[userId] = amount others owe them (positive = they are owed)
     const net = {};
     group.members.forEach((m) => { net[m.toString()] = 0; });
 

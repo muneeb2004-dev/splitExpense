@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { getDashboard, getGroups, createGroup, getGroup, deleteGroup } = require('../controllers/groupController');
 const { getExpenses, createExpense, deleteExpense, getBalances } = require('../controllers/expenseController');
-const { getSettlements, createSettlement } = require('../controllers/settlementController');
+const { getSettlements, createSettlement, acceptSettlement } = require('../controllers/settlementController');
 const { protect } = require('../middleware/auth');
 
 router.use(protect);
@@ -15,5 +15,6 @@ router.delete('/:groupId/expenses/:id', deleteExpense);
 router.get('/:groupId/balances', getBalances);
 
 router.route('/:groupId/settlements').get(getSettlements).post(createSettlement);
+router.patch('/:groupId/settlements/:id/accept', acceptSettlement);
 
 module.exports = router;

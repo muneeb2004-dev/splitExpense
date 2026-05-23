@@ -21,9 +21,17 @@ const settlementSchema = new mongoose.Schema({
     required: [true, 'Amount is required'],
     min: [0.01, 'Amount must be positive'],
   },
+  status: {
+    type: String,
+    enum: ['pending', 'accepted'],
+    default: 'pending',
+  },
   settledAt: {
     type: Date,
     default: Date.now,
+  },
+  acceptedAt: {
+    type: Date,
   },
 });
 

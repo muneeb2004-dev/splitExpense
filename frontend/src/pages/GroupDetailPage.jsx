@@ -21,6 +21,9 @@ const computeDebts = (balances, members) => {
     else if (bal < -0.01) pool.push({ member: m, amount: Math.abs(bal) });
   });
 
+  creds.sort((a, b) => b.amount - a.amount);
+  pool.sort((a, b) => b.amount - a.amount);
+
   const debts = [];
   let ci = 0;
   let di = 0;
@@ -29,13 +32,19 @@ const computeDebts = (balances, members) => {
     if (amount > 0.01) {
       debts.push({ from: pool[di].member, to: creds[ci].member, amount: parseFloat(amount.toFixed(2)) });
     }
-    creds[ci].amount -= amount;
-    pool[di].amount -= amount;
+    creds[ci].amount = parseFloat((creds[ci].amount - amount).toFixed(2));
+    pool[di].amount = parseFloat((pool[di].amount - amount).toFixed(2));
     if (creds[ci].amount < 0.01) ci++;
     if (pool[di].amount < 0.01) di++;
   }
 
   return debts;
+};
+
+const isEqualSplit = (participants) => {
+  if (participants.length <= 1) return true;
+  const first = participants[0].share;
+  return participants.every((p) => Math.abs(p.share - first) < 0.02);
 };
 
 export default function GroupDetailPage() {
@@ -52,9 +61,12 @@ export default function GroupDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Expense form
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [expenseForm, setExpenseForm] = useState({ description: '', amount: '', category: 'other', date: '' });
+  const [splitType, setSplitType] = useState('equally'); // 'equally' | 'by_amount'
   const [selectedParticipants, setSelectedParticipants] = useState(null); // null = all members
+  const [customShares, setCustomShares] = useState({}); // { [userId]: string }
   const [expenseError, setExpenseError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -79,23 +91,61 @@ export default function GroupDetailPage() {
 
   useEffect(() => { fetchAll(); }, [id]);
 
+  const activeParticipantIds = selectedParticipants ?? (group?.members.map((m) => m._id) ?? []);
+
+  const customSharesTotal = activeParticipantIds.reduce((sum, uid) => {
+    return sum + (parseFloat(customShares[uid]) || 0);
+  }, 0);
+
+  const remaining = parseFloat(expenseForm.amount || 0) - customSharesTotal;
+
+  const resetExpenseForm = () => {
+    setShowExpenseForm(false);
+    setExpenseForm({ description: '', amount: '', category: 'other', date: '' });
+    setSplitType('equally');
+    setSelectedParticipants(null);
+    setCustomShares({});
+    setExpenseError('');
+  };
+
   const handleExpenseSubmit = async (e) => {
     e.preventDefault();
     setExpenseError('');
+
+    if (activeParticipantIds.length === 0) {
+      setExpenseError('Select at least one participant');
+      return;
+    }
+
+    if (splitType === 'by_amount') {
+      if (Math.abs(remaining) > 0.01) {
+        setExpenseError(`Remaining amount must be zero. Currently ${remaining > 0 ? 'under' : 'over'} by ${formatCurrency(Math.abs(remaining))}`);
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
-      const participantIds = selectedParticipants ?? group.members.map((m) => m._id);
-      const { data: newExpense } = await expenseService.create(id, {
+      const amount = parseFloat(expenseForm.amount);
+      let payload = {
         description: expenseForm.description,
-        amount: parseFloat(expenseForm.amount),
+        amount,
         category: expenseForm.category,
         date: expenseForm.date || undefined,
-        participantIds,
-      });
+      };
+
+      if (splitType === 'by_amount') {
+        payload.shares = activeParticipantIds.map((uid) => ({
+          userId: uid,
+          share: parseFloat(parseFloat(customShares[uid] || 0).toFixed(2)),
+        }));
+      } else {
+        payload.participantIds = activeParticipantIds;
+      }
+
+      const { data: newExpense } = await expenseService.create(id, payload);
       setExpenses((prev) => [newExpense, ...prev]);
-      setShowExpenseForm(false);
-      setExpenseForm({ description: '', amount: '', category: 'other', date: '' });
-      setSelectedParticipants(null);
+      resetExpenseForm();
       toast.success('Expense added!');
       const { data: newBalances } = await expenseService.getBalances(id);
       setBalances(newBalances);
@@ -114,11 +164,24 @@ export default function GroupDetailPage() {
         amount: debt.amount,
       });
       setSettlements((prev) => [newSettlement, ...prev]);
-      toast.success(`Payment of ${formatCurrency(debt.amount)} to ${debt.to.name} recorded!`);
+      toast.success(`Payment request of ${formatCurrency(debt.amount)} sent to ${debt.to.name}. Waiting for confirmation.`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send payment request');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleAccept = async (settlement) => {
+    setSubmitting(true);
+    try {
+      const { data: updated } = await settlementService.accept(id, settlement._id);
+      setSettlements((prev) => prev.map((s) => s._id === updated._id ? updated : s));
+      toast.success(`Payment of ${formatCurrency(updated.amount)} from ${updated.fromUser.name} confirmed!`);
       const { data: newBalances } = await expenseService.getBalances(id);
       setBalances(newBalances);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to record payment');
+      toast.error(err.response?.data?.message || 'Failed to confirm payment');
     } finally {
       setSubmitting(false);
     }
@@ -146,7 +209,12 @@ export default function GroupDetailPage() {
 
   const myBalance = balances[user._id] || 0;
   const debts = computeDebts(balances, group.members);
+  const pendingSettlements = settlements.filter((s) => s.status === 'pending');
+  const acceptedSettlements = settlements.filter((s) => s.status === 'accepted');
+  const pendingToMe = pendingSettlements.filter((s) => s.toUser._id === user._id);
+  const pendingFromMe = pendingSettlements.filter((s) => s.fromUser._id === user._id);
   const myDebtCount = debts.filter((d) => d.from._id === user._id).length;
+  const pendingBadge = pendingToMe.length;
 
   return (
     <div className="page-container">
@@ -244,7 +312,7 @@ export default function GroupDetailPage() {
             style={{ flex: 1 }}>
             {tab === 'expenses'
               ? '💳 Expenses'
-              : `✅ Settle Up${myDebtCount > 0 ? ` (${myDebtCount})` : ''}`}
+              : `✅ Settle Up${myDebtCount > 0 ? ` (${myDebtCount})` : ''}${pendingBadge > 0 ? ` · ${pendingBadge} pending` : ''}`}
           </button>
         ))}
       </div>
@@ -261,12 +329,11 @@ export default function GroupDetailPage() {
 
           {showExpenseForm && (
             <div className="glass-card" style={{ padding: 'clamp(16px, 4vw, 24px)', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '4px' }}>💳 New Expense</h2>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                Automatically split equally among all {group.members.length} members.
-              </p>
+              <h2 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '20px' }}>💳 New Expense</h2>
               {expenseError && <div className="alert-error" style={{ marginBottom: '14px' }}>{expenseError}</div>}
-              <form onSubmit={handleExpenseSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <form onSubmit={handleExpenseSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                {/* Row 1: description + amount */}
                 <div className="form-grid-2">
                   <div>
                     <label className="form-label">Description</label>
@@ -277,7 +344,10 @@ export default function GroupDetailPage() {
                   <div>
                     <label className="form-label">Amount (₨)</label>
                     <input type="number" required min="1" step="1" value={expenseForm.amount}
-                      onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
+                      onChange={(e) => {
+                        setExpenseForm({ ...expenseForm, amount: e.target.value });
+                        setCustomShares({});
+                      }}
                       placeholder="0" className="input-field" />
                   </div>
                   <div>
@@ -298,27 +368,48 @@ export default function GroupDetailPage() {
                   </div>
                 </div>
 
-                {/* Split among */}
+                {/* Split type toggle */}
+                <div>
+                  <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>How to split</label>
+                  <div style={{
+                    display: 'inline-flex', background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', padding: '3px', gap: '3px',
+                  }}>
+                    {['equally', 'by_amount'].map((type) => (
+                      <button key={type} type="button"
+                        onClick={() => { setSplitType(type); setCustomShares({}); }}
+                        style={{
+                          padding: '6px 18px', borderRadius: '8px', fontSize: '0.82rem', fontWeight: 600,
+                          cursor: 'pointer', border: 'none', transition: 'all 0.15s',
+                          background: splitType === type ? 'rgba(99,102,241,0.3)' : 'transparent',
+                          color: splitType === type ? '#a5b4fc' : 'var(--text-muted)',
+                        }}>
+                        {type === 'equally' ? '⚖️ Equally' : '✏️ By Amount'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Split among — participant chips */}
                 <div>
                   <label className="form-label" style={{ marginBottom: '8px', display: 'block' }}>
                     Split among
                     <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: '6px' }}>
-                      ({(selectedParticipants ?? group.members.map((m) => m._id)).length} of {group.members.length} selected)
+                      ({activeParticipantIds.length} of {group.members.length} selected)
                     </span>
                   </label>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                     {group.members.map((m) => {
                       const active = selectedParticipants === null || selectedParticipants.includes(m._id);
                       return (
-                        <button
-                          key={m._id}
-                          type="button"
+                        <button key={m._id} type="button"
                           onClick={() => {
                             const current = selectedParticipants ?? group.members.map((x) => x._id);
                             const next = active
                               ? current.filter((pid) => pid !== m._id)
                               : [...current, m._id];
                             setSelectedParticipants(next.length === group.members.length ? null : next);
+                            setCustomShares({});
                           }}
                           style={{
                             padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600,
@@ -326,8 +417,7 @@ export default function GroupDetailPage() {
                             background: active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)',
                             border: active ? '1px solid rgba(99,102,241,0.5)' : '1px solid rgba(255,255,255,0.1)',
                             color: active ? '#a5b4fc' : 'var(--text-muted)',
-                          }}
-                        >
+                          }}>
                           {m.name}{m._id === user._id ? ' (you)' : ''}
                         </button>
                       );
@@ -335,30 +425,87 @@ export default function GroupDetailPage() {
                   </div>
                 </div>
 
-                {expenseForm.amount && (() => {
-                  const count = (selectedParticipants ?? group.members.map((m) => m._id)).length;
-                  return count > 0 ? (
-                    <div style={{
-                      background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
-                      borderRadius: '10px', padding: '10px 14px',
-                      fontSize: '0.82rem', color: 'var(--text-secondary)',
-                    }}>
-                      Each person pays:{' '}
-                      <strong style={{ color: '#a5b4fc' }}>
-                        {formatCurrency(parseFloat(expenseForm.amount) / count)}
-                      </strong>
-                      {' '}({count} {count === 1 ? 'person' : 'people'})
-                    </div>
-                  ) : (
-                    <div className="alert-error">Select at least one participant</div>
-                  );
-                })()}
+                {/* Equally — preview */}
+                {splitType === 'equally' && expenseForm.amount && activeParticipantIds.length > 0 && (
+                  <div style={{
+                    background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
+                    borderRadius: '10px', padding: '10px 14px',
+                    fontSize: '0.82rem', color: 'var(--text-secondary)',
+                  }}>
+                    Each person pays:{' '}
+                    <strong style={{ color: '#a5b4fc' }}>
+                      {formatCurrency(parseFloat(expenseForm.amount) / activeParticipantIds.length)}
+                    </strong>
+                    {' '}({activeParticipantIds.length} {activeParticipantIds.length === 1 ? 'person' : 'people'})
+                  </div>
+                )}
+
+                {splitType === 'equally' && activeParticipantIds.length === 0 && (
+                  <div className="alert-error">Select at least one participant</div>
+                )}
+
+                {/* By Amount — per-person inputs */}
+                {splitType === 'by_amount' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {activeParticipantIds.length === 0 ? (
+                      <div className="alert-error">Select at least one participant</div>
+                    ) : (
+                      <>
+                        {group.members.filter((m) => activeParticipantIds.includes(m._id)).map((m) => (
+                          <div key={m._id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{
+                              fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)',
+                              minWidth: '90px', flexShrink: 0,
+                            }}>
+                              {m.name}{m._id === user._id ? ' (you)' : ''}
+                            </span>
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <span style={{
+                                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+                                color: 'var(--text-muted)', fontSize: '0.85rem', pointerEvents: 'none',
+                              }}>₨</span>
+                              <input
+                                type="number" min="0" step="1"
+                                value={customShares[m._id] ?? ''}
+                                onChange={(e) => setCustomShares((prev) => ({ ...prev, [m._id]: e.target.value }))}
+                                placeholder="0"
+                                className="input-field"
+                                style={{ paddingLeft: '28px' }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Remaining counter */}
+                        <div style={{
+                          background: Math.abs(remaining) < 0.01
+                            ? 'rgba(16,185,129,0.08)' : 'rgba(99,102,241,0.08)',
+                          border: `1px solid ${Math.abs(remaining) < 0.01
+                            ? 'rgba(16,185,129,0.25)' : 'rgba(99,102,241,0.2)'}`,
+                          borderRadius: '10px', padding: '10px 14px',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          fontSize: '0.82rem',
+                        }}>
+                          <span style={{ color: 'var(--text-secondary)' }}>
+                            {Math.abs(remaining) < 0.01 ? '✅ Fully allocated' : remaining > 0 ? 'Remaining to allocate' : 'Over-allocated by'}
+                          </span>
+                          <strong style={{
+                            color: Math.abs(remaining) < 0.01 ? '#34d399' : remaining > 0 ? '#a5b4fc' : '#f87171',
+                            fontSize: '0.9rem',
+                          }}>
+                            {Math.abs(remaining) < 0.01 ? formatCurrency(0) : formatCurrency(Math.abs(remaining))}
+                          </strong>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px', flexWrap: 'wrap' }}>
                   <button type="submit" disabled={submitting} className="btn-primary">
                     {submitting ? 'Adding…' : 'Add Expense'}
                   </button>
-                  <button type="button" onClick={() => { setShowExpenseForm(false); setSelectedParticipants(null); }} className="btn-ghost">
+                  <button type="button" onClick={resetExpenseForm} className="btn-ghost">
                     Cancel
                   </button>
                 </div>
@@ -377,50 +524,55 @@ export default function GroupDetailPage() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {expenses.map((exp) => (
-                <div key={exp._id} className="glass-card" style={{ padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                      width: '38px', height: '38px', flexShrink: 0,
-                      background: 'rgba(255,255,255,0.06)', borderRadius: '10px',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem',
-                    }}>
-                      {CAT_ICONS[exp.category] || '📦'}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {exp.description}
-                      </p>
-                      <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                        Paid by <span style={{ color: 'var(--text-secondary)' }}>{exp.paidBy.name}</span>
-                        {' · '}<span className={`cat-${exp.category}`}>{exp.category}</span>
-                        {' · '}{new Date(exp.date).toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <p style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                          {formatCurrency(exp.amount)}
+              {expenses.map((exp) => {
+                const equalSplit = isEqualSplit(exp.participants);
+                return (
+                  <div key={exp._id} className="glass-card" style={{ padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{
+                        width: '38px', height: '38px', flexShrink: 0,
+                        background: 'rgba(255,255,255,0.06)', borderRadius: '10px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem',
+                      }}>
+                        {CAT_ICONS[exp.category] || '📦'}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {exp.description}
                         </p>
-                        <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          ÷{exp.participants.length} = {formatCurrency(exp.amount / exp.participants.length)} each
+                        <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                          Paid by <span style={{ color: 'var(--text-secondary)' }}>{exp.paidBy.name}</span>
+                          {' · '}<span className={`cat-${exp.category}`}>{exp.category}</span>
+                          {' · '}{new Date(exp.date).toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </p>
                       </div>
-                      {exp.paidBy._id === user._id && (
-                        <button onClick={() => handleDeleteExpense(exp._id, exp.description)}
-                          style={{
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            color: 'var(--text-muted)', fontSize: '1rem', padding: '4px',
-                            borderRadius: '6px', transition: 'all 0.2s',
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.color = '#f87171'}
-                          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
-                        >🗑</button>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                        <div style={{ textAlign: 'right' }}>
+                          <p style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                            {formatCurrency(exp.amount)}
+                          </p>
+                          <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {equalSplit
+                              ? `÷${exp.participants.length} = ${formatCurrency(exp.amount / exp.participants.length)} each`
+                              : `${exp.participants.length} people · custom`}
+                          </p>
+                        </div>
+                        {exp.paidBy._id === user._id && (
+                          <button onClick={() => handleDeleteExpense(exp._id, exp.description)}
+                            style={{
+                              background: 'none', border: 'none', cursor: 'pointer',
+                              color: 'var(--text-muted)', fontSize: '1rem', padding: '4px',
+                              borderRadius: '6px', transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#f87171'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                          >🗑</button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
@@ -447,6 +599,9 @@ export default function GroupDetailPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {debts.map((debt, i) => {
                   const isMe = debt.from._id === user._id;
+                  const alreadyPending = pendingFromMe.some(
+                    (s) => s.toUser._id === debt.to._id
+                  );
                   return (
                     <div key={i} className="glass-card" style={{
                       padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)',
@@ -460,14 +615,18 @@ export default function GroupDetailPage() {
                           {debt.to.name}
                         </p>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px' }}>
-                          {isMe ? "Tap 'I Paid' once you've sent the money" : 'Waiting for them to confirm'}
+                          {isMe
+                            ? alreadyPending
+                              ? '⏳ Waiting for confirmation from ' + debt.to.name
+                              : "Tap 'I Paid' once you've sent the money"
+                            : 'Waiting for them to settle'}
                         </p>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                         <span style={{ fontWeight: 800, fontSize: '1rem', color: isMe ? '#f87171' : 'var(--text-secondary)' }}>
                           {formatCurrency(debt.amount)}
                         </span>
-                        {isMe && (
+                        {isMe && !alreadyPending && (
                           <button
                             onClick={() => handleIPaid(debt)}
                             disabled={submitting}
@@ -477,6 +636,15 @@ export default function GroupDetailPage() {
                             {submitting ? '…' : 'I Paid'}
                           </button>
                         )}
+                        {isMe && alreadyPending && (
+                          <span style={{
+                            fontSize: '0.75rem', padding: '5px 12px', borderRadius: '8px',
+                            background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)',
+                            color: '#fbbf24', whiteSpace: 'nowrap',
+                          }}>
+                            Pending
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -485,22 +653,59 @@ export default function GroupDetailPage() {
             )}
           </div>
 
-          {/* Payment History */}
+          {/* Pending Payment Requests (shown to the recipient) */}
+          {pendingToMe.length > 0 && (
+            <div style={{ marginBottom: '28px' }}>
+              <h2 style={{ fontSize: '0.78rem', fontWeight: 700, color: '#fbbf24', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                ⏳ Pending Confirmations ({pendingToMe.length})
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {pendingToMe.map((s) => (
+                  <div key={s._id} className="glass-card" style={{
+                    padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+                    borderColor: 'rgba(251,191,36,0.25)',
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                        <span style={{ color: '#fbbf24' }}>{s.fromUser.name}</span>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> says they paid you </span>
+                        <span style={{ color: '#34d399' }}>{formatCurrency(s.amount)}</span>
+                      </p>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '3px' }}>
+                        Confirm once you've received the money
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleAccept(s)}
+                      disabled={submitting}
+                      className="btn-success"
+                      style={{ fontSize: '0.78rem', padding: '6px 14px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
+                      {submitting ? '…' : '✓ Accept'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Payment History — accepted only */}
           <div>
             <h2 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '14px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Payment History
             </h2>
-            {settlements.length === 0 ? (
+            {acceptedSettlements.length === 0 ? (
               <div style={{
                 textAlign: 'center', padding: 'clamp(20px, 5vw, 32px) 24px',
                 background: 'rgba(255,255,255,0.02)',
                 border: '1px dashed rgba(255,255,255,0.1)', borderRadius: '16px',
               }}>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No payments recorded yet.</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No confirmed payments yet.</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {settlements.map((s) => (
+                {acceptedSettlements.map((s) => (
                   <div key={s._id} className="glass-card" style={{
                     padding: 'clamp(12px, 3vw, 16px) clamp(14px, 3vw, 20px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
@@ -518,7 +723,7 @@ export default function GroupDetailPage() {
                           <span>{s.toUser._id === user._id ? 'you' : s.toUser.name}</span>
                         </p>
                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                          {new Date(s.settledAt).toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {new Date(s.acceptedAt || s.settledAt).toLocaleDateString('en-PK', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </p>
                       </div>
                     </div>

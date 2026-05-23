@@ -48,6 +48,7 @@ export const expenseService = {
 export const settlementService = {
   getAll: (groupId) => api.get(`/groups/${groupId}/settlements`),
   create: (groupId, data) => api.post(`/groups/${groupId}/settlements`, data),
+  accept: (groupId, id) => api.patch(`/groups/${groupId}/settlements/${id}/accept`),
 };
 
 export default api;
