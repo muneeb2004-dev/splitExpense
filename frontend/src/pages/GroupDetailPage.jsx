@@ -11,32 +11,55 @@ const CAT_ICONS = {
   entertainment: '🎬', utilities: '⚡', shopping: '🛍️', other: '📦',
 };
 
-const computeDebts = (balances, members) => {
-  const creds = [];
-  const pool = [];
+// Compute direct pairwise debts from raw expenses.
+// Each participant owes the payer their exact share — no cross-netting across people.
+// e.g. if Qasim owes Muneeb 232 and Qasim owes Ishtiaq 288, those stay separate.
+const computeDirectDebts = (expenses, settlements, members) => {
+  // pairDebt[fromId][toId] = total amount fromId owes toId
+  const pairDebt = {};
 
-  members.forEach((m) => {
-    const bal = balances[m._id] || 0;
-    if (bal > 0.01) creds.push({ member: m, amount: bal });
-    else if (bal < -0.01) pool.push({ member: m, amount: Math.abs(bal) });
+  const add = (fromId, toId, amount) => {
+    if (fromId === toId) return;
+    if (!pairDebt[fromId]) pairDebt[fromId] = {};
+    pairDebt[fromId][toId] = (pairDebt[fromId][toId] || 0) + amount;
+  };
+
+  // Each participant owes the payer their share
+  expenses.forEach((exp) => {
+    const payerId = exp.paidBy._id;
+    exp.participants.forEach((p) => {
+      const uid = p.user._id || p.user; // handle populated or raw id
+      add(uid, payerId, p.share);
+    });
   });
 
-  creds.sort((a, b) => b.amount - a.amount);
-  pool.sort((a, b) => b.amount - a.amount);
+  // Accepted settlements reduce the direct debt between those two people
+  settlements
+    .filter((s) => s.status === 'accepted')
+    .forEach((s) => {
+      // fromUser paid toUser → reduce fromUser's debt to toUser
+      add(s.toUser._id, s.fromUser._id, s.amount);
+    });
 
+  // Net each pair and emit debts
   const debts = [];
-  let ci = 0;
-  let di = 0;
-  while (ci < creds.length && di < pool.length) {
-    const amount = Math.min(creds[ci].amount, pool[di].amount);
-    if (amount > 0.01) {
-      debts.push({ from: pool[di].member, to: creds[ci].member, amount: parseFloat(amount.toFixed(2)) });
-    }
-    creds[ci].amount = parseFloat((creds[ci].amount - amount).toFixed(2));
-    pool[di].amount = parseFloat((pool[di].amount - amount).toFixed(2));
-    if (creds[ci].amount < 0.01) ci++;
-    if (pool[di].amount < 0.01) di++;
-  }
+  const processed = new Set();
+
+  members.forEach((a) => {
+    members.forEach((b) => {
+      if (a._id === b._id) return;
+      const key = [a._id, b._id].sort().join('|');
+      if (processed.has(key)) return;
+      processed.add(key);
+
+      const aOwesB = (pairDebt[a._id] || {})[b._id] || 0;
+      const bOwesA = (pairDebt[b._id] || {})[a._id] || 0;
+      const net = parseFloat((aOwesB - bOwesA).toFixed(2));
+
+      if (net > 0.01) debts.push({ from: a, to: b, amount: net });
+      else if (net < -0.01) debts.push({ from: b, to: a, amount: parseFloat((-net).toFixed(2)) });
+    });
+  });
 
   return debts;
 };
@@ -208,7 +231,7 @@ export default function GroupDetailPage() {
   );
 
   const myBalance = balances[user._id] || 0;
-  const debts = computeDebts(balances, group.members);
+  const debts = computeDirectDebts(expenses, settlements, group.members);
   const pendingSettlements = settlements.filter((s) => s.status === 'pending');
   const acceptedSettlements = settlements.filter((s) => s.status === 'accepted');
   const pendingToMe = pendingSettlements.filter((s) => s.toUser._id === user._id);
