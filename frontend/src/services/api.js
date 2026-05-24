@@ -49,6 +49,7 @@ export const settlementService = {
   getAll: (groupId) => api.get(`/groups/${groupId}/settlements`),
   create: (groupId, data) => api.post(`/groups/${groupId}/settlements`, data),
   accept: (groupId, id) => api.patch(`/groups/${groupId}/settlements/${id}/accept`),
+  reject: (groupId, id) => api.patch(`/groups/${groupId}/settlements/${id}/reject`),
 };
 
 export default api;

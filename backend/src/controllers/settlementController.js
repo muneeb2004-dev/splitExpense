@@ -84,4 +84,32 @@ const acceptSettlement = async (req, res) => {
   }
 };
 
-module.exports = { getSettlements, createSettlement, acceptSettlement };
+// PATCH /api/groups/:groupId/settlements/:id/reject  — creditor rejects the claim
+const rejectSettlement = async (req, res) => {
+  try {
+    await assertMember(req.params.groupId, req.user._id);
+
+    const settlement = await Settlement.findById(req.params.id);
+    if (!settlement) return res.status(404).json({ message: 'Settlement not found' });
+    if (settlement.group.toString() !== req.params.groupId)
+      return res.status(400).json({ message: 'Settlement does not belong to this group' });
+    if (!settlement.toUser.equals(req.user._id))
+      return res.status(403).json({ message: 'Only the recipient can reject this payment' });
+    if (settlement.status !== 'pending')
+      return res.status(400).json({ message: 'Only pending settlements can be rejected' });
+
+    settlement.status = 'rejected';
+    await settlement.save();
+
+    const populated = await settlement.populate([
+      { path: 'fromUser', select: 'name email' },
+      { path: 'toUser', select: 'name email' },
+    ]);
+
+    res.json(populated);
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message });
+  }
+};
+
+module.exports = { getSettlements, createSettlement, acceptSettlement, rejectSettlement };

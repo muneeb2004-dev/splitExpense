@@ -195,6 +195,19 @@ export default function GroupDetailPage() {
     }
   };
 
+  const handleReject = async (settlement) => {
+    setSubmitting(true);
+    try {
+      const { data: updated } = await settlementService.reject(id, settlement._id);
+      setSettlements((prev) => prev.map((s) => s._id === updated._id ? updated : s));
+      toast.success(`Payment claim from ${updated.fromUser.name} rejected.`);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to reject payment');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAccept = async (settlement) => {
     setSubmitting(true);
     try {
@@ -699,14 +712,27 @@ export default function GroupDetailPage() {
                         Confirm once you've received the money
                       </p>
                     </div>
-                    <button
-                      onClick={() => handleAccept(s)}
-                      disabled={submitting}
-                      className="btn-success"
-                      style={{ fontSize: '0.78rem', padding: '6px 14px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                    >
-                      {submitting ? '…' : '✓ Accept'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                      <button
+                        onClick={() => handleReject(s)}
+                        disabled={submitting}
+                        style={{
+                          fontSize: '0.78rem', padding: '6px 14px', whiteSpace: 'nowrap',
+                          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                          color: '#f87171', borderRadius: '8px', cursor: 'pointer',
+                        }}
+                      >
+                        {submitting ? '…' : '✗ Reject'}
+                      </button>
+                      <button
+                        onClick={() => handleAccept(s)}
+                        disabled={submitting}
+                        className="btn-success"
+                        style={{ fontSize: '0.78rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
+                      >
+                        {submitting ? '…' : '✓ Accept'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
